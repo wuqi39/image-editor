@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>编辑图片</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .image-container {
+            margin: 20px 0;
+            text-align: center;
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            /* 防止在小屏幕下换行 */
+            flex-wrap: nowrap;
+            /* 当内容溢出时可滚动 */
+            overflow-x: auto;
+        }
+        .image-box {
+            /* 固定宽度，确保两个图片可以在一行显示 */
+            width: 50%;
+            min-width: 300px;
+        }
+        img, canvas {
+            max-width: 100%;
+            border: 1px solid #ccc;
+            /* 让图片和画布高度自适应 */
+            height: auto;
+        }
+        .controls {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #f5f5f5;
+            border-radius: 5px;
+        }
+        .control-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        input[type="range"] {
+            width: 100%;
+        }
+        button {
+            padding: 10px 20px;
+            margin-right: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .filter-buttons {
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>编辑图片</h1>
+
+    <div class="image-container">
+        <div class="image-box">
+            <h3>原始图片</h3>
+            <img id="originalImage" src="{{ url_for('uploaded_file', filename=original_image) }}"
+                 alt="原始图片" style="max-width: 100%;">
+        </div>
+        <div class="image-box">
+            <h3>预览</h3>
+            <canvas id="previewCanvas"></canvas>
+        </div>
+    </div>
+
+    <div class="controls">
+        <form action="{{ url_for('process_image') }}" method="POST">
+            <input type="hidden" name="original_image" value="{{ original_image }}">
+
+            <!-- 裁剪控制 -->
+            <div class="control-group">
+                <h3>裁剪</h3>
+                <label>左: <input type="number" id="cropLeft" name="left" value="0" min="0" max="{{ width }}"></label>
+                <label>上: <input type="number" id="cropUpper" name="upper" value="0" min="0" max="{{ height }}"></label>
+                <label>右: <input type="number" id="cropRight" name="right" value="{{ width }}" min="0" max="{{ width }}"></label>
+                <label>下: <input type="number" id="cropLower" name="lower" value="{{ height }}" min="0" max="{{ height }}"></label>
+            </div>
+
+            <!-- 亮度控制 -->
+            <div class="control-group">
+                <h3>亮度</h3>
+                <input type="range" id="brightness" name="brightness" min="0.1" max="3" step="0.1" value="1">
+                <span id="brightnessValue">1</span>
+            </div>
+
+            <!-- 对比度控制 -->
+            <div class="control-group">
+                <h3>对比度</h3>
+                <input type="range" id="contrast" name="contrast" min="0.1" max="3" step="0.1" value="1">
+                <span id="contrastValue">1</span>
+            </div>
+
+            <!-- 滤镜控制 -->
+            <div class="control-group filter-buttons">
+                <h3>滤镜</h3>
+                <input type="radio" id="blur" name="filter" value="blur">
+                <label for="blur">模糊</label>
+                <input type="radio" id="sharpen" name="filter" value="sharpen">
+                <label for="sharpen">锐化</label>
+            </div>
+
+            <button type="submit">应用更改</button>
+        </form>
+    </div>
+
+    <script>
+        // 初始化画布
+        const img = document.getElementById('originalImage');
+        const canvas = document.getElementById('previewCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // 等待图片加载完成
+        img.onload = function() {
+            // 移除对画布宽度和高度的硬编码设置
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+            // 初始化裁剪值
+            document.getElementById('cropRight').value = img.width;
+            document.getElementById('cropLower').value = img.height;
+        };
+
+        // 更新亮度显示值
+        document.getElementById('brightness').addEventListener('input', function(e) {
+            document.getElementById('brightnessValue').textContent = e.target.value;
+            updatePreview();
+        });
+
+        // 更新对比度显示值
+        document.getElementById('contrast').addEventListener('input', function(e) {
+            document.getElementById('contrastValue').textContent = e.target.value;
+            updatePreview();
+        });
+
+        // 监听裁剪输入框的变化
+        document.getElementById('cropLeft').addEventListener('input', updatePreview);
+        document.getElementById('cropUpper').addEventListener('input', updatePreview);
+        document.getElementById('cropRight').addEventListener('input', updatePreview);
+        document.getElementById('cropLower').addEventListener('input', updatePreview);
+
+        // 监听滤镜单选框的变化
+        document.querySelectorAll('input[name="filter"]').forEach(function(input) {
+            input.addEventListener('change', updatePreview);
+        });
+
+        function updatePreview() {
+            // 获取裁剪值
+            const left = parseInt(document.getElementById('cropLeft').value);
+            const upper = parseInt(document.getElementById('cropUpper').value);
+            const right = parseInt(document.getElementById('cropRight').value);
+            const lower = parseInt(document.getElementById('cropLower').value);
+
+            // 获取亮度和对比度值
+            const brightness = parseFloat(document.getElementById('brightness').value);
+            const contrast = parseFloat(document.getElementById('contrast').value);
+
+            // 获取滤镜类型
+            const filter = document.querySelector('input[name="filter"]:checked');
+            const filterType = filter ? filter.value : null;
+
+            // 清空画布
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 创建一个新的 Image 对象
+            const tempImg = new Image();
+            tempImg.src = img.src;
+
+            tempImg.onload = function() {
+                // 裁剪图片
+                const croppedCanvas = document.createElement('canvas');
+                const croppedCtx = croppedCanvas.getContext('2d');
+                croppedCanvas.width = right - left;
+                croppedCanvas.height = lower - upper;
+                croppedCtx.drawImage(tempImg, left, upper, right - left, lower - upper, 0, 0, right - left, lower - upper);
+
+                // 应用亮度和对比度调整
+                const adjustedCanvas = document.createElement('canvas');
+                const adjustedCtx = adjustedCanvas.getContext('2d');
+                adjustedCanvas.width = croppedCanvas.width;
+                adjustedCanvas.height = croppedCanvas.height;
+                adjustedCtx.filter = `brightness(${brightness}) contrast(${contrast})`;
+                adjustedCtx.drawImage(croppedCanvas, 0, 0);
+
+                // 应用滤镜
+                if (filterType === 'blur') {
+                    adjustedCtx.filter = 'blur(5px)';
+                } else if (filterType === 'sharpen') {
+                    adjustedCtx.filter = 'sharpen';
+                }
+                adjustedCtx.drawImage(adjustedCanvas, 0, 0);
+
+                // 将最终结果绘制到预览画布上
+                ctx.drawImage(adjustedCanvas, 0, 0, canvas.width, canvas.height);
+            };
+        }
+    </script>
+</body>
+</html>

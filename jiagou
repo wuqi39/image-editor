@@ -1,0 +1,11 @@
+image-editor/
+├── app.py                # Flask应用主文件
+├── static/               # 静态资源目录
+│   ├── css/              # CSS样式
+│   │   └── style.css
+│   ├── js/               # JavaScript脚本
+│   │   └── main.js
+│   └── uploads/          # 上传和处理后的图片
+└── templates/            # HTML模板
+    ├── index.html        # 主页面
+    └── result.html       # 结果页面

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>编辑结果</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+        }
+        .comparison {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin: 20px 0;
+            /* 防止在小屏幕下换行 */
+            flex-wrap: nowrap;
+            /* 当内容溢出时可滚动 */
+            overflow-x: auto;
+        }
+        .image-box {
+            /* 固定宽度，确保两个图片可以在一行显示 */
+            width: 50%;
+            min-width: 300px;
+        }
+        img {
+            max-width: 100%;
+            border: 1px solid #ccc;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <h1>编辑结果</h1>
+
+    <div class="comparison">
+        <div class="image-box">
+            <h3>原始图片</h3>
+            <img src="{{ url_for('uploaded_file', filename=original_image) }}" alt="原始图片">
+        </div>
+        <div class="image-box">
+            <h3>处理后图片</h3>
+            <img src="{{ url_for('uploaded_file', filename=processed_image) }}" alt="处理后图片">
+        </div>
+    </div>
+
+    <div>
+        <a href="{{ url_for('index') }}">
+            <button>返回首页</button>
+        </a>
+        <a href="{{ url_for('uploaded_file', filename=processed_image) }}" download>
+            <button>下载图片</button>
+        </a>
+    </div>
+</body>
+</html>
