@@ -17,20 +17,16 @@
             display: flex;
             justify-content: center;
             gap: 20px;
-            /* 防止在小屏幕下换行 */
             flex-wrap: nowrap;
-            /* 当内容溢出时可滚动 */
             overflow-x: auto;
         }
         .image-box {
-            /* 固定宽度，确保两个图片可以在一行显示 */
             width: 50%;
             min-width: 300px;
         }
         img, canvas {
             max-width: 100%;
             border: 1px solid #ccc;
-            /* 让图片和画布高度自适应 */
             height: auto;
         }
         .controls {
@@ -41,6 +37,8 @@
         }
         .control-group {
             margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px dashed #ddd;
         }
         label {
             display: block;
@@ -68,19 +66,16 @@
 </head>
 <body>
     <h1>编辑图片</h1>
-
     <div class="image-container">
         <div class="image-box">
             <h3>原始图片</h3>
-            <img id="originalImage" src="{{ url_for('uploaded_file', filename=original_image) }}"
-                 alt="原始图片" style="max-width: 100%;">
+            <img id="originalImage" src="{{ url_for('uploaded_file', filename=original_image) }}" alt="原始图片">
         </div>
         <div class="image-box">
             <h3>预览</h3>
             <canvas id="previewCanvas"></canvas>
         </div>
     </div>
-
     <div class="controls">
         <form action="{{ url_for('process_image') }}" method="POST">
             <input type="hidden" name="original_image" value="{{ original_image }}">
@@ -117,99 +112,117 @@
                 <label for="sharpen">锐化</label>
             </div>
 
+            <!-- 新增：AI超分辨率放大控制 -->
+            <div class="control-group">
+                <h3>AI图片放大（超分辨率）</h3>
+                <label>放大倍数:
+                    <select id="upscaleFactor" name="upscale_factor" required>
+                        <option value="1">不放大</option>
+                        <option value="2" selected>2倍（较快）</option>
+                        <option value="4">4倍（平衡）</option>
+                        <option value="8">8倍（高清，较慢）</option>
+                    </select>
+                </label>
+                <small>提示：放大倍数越高，处理时间越长（首次使用会下载模型，约100-300MB）</small>
+            </div>
+
             <button type="submit">应用更改</button>
         </form>
     </div>
 
     <script>
-        // 初始化画布
+        // 初始化画布预览
         const img = document.getElementById('originalImage');
         const canvas = document.getElementById('previewCanvas');
         const ctx = canvas.getContext('2d');
 
-        // 等待图片加载完成
+        // 确保画布尺寸与原始图片显示尺寸一致（而非原始像素尺寸，避免超大图问题）
         img.onload = function() {
-            // 移除对画布宽度和高度的硬编码设置
+            // 使用图片在页面中的显示宽高（受CSS限制），确保与原始图片显示规格一致
+            canvas.width = img.offsetWidth;
+            canvas.height = img.offsetHeight;
+            // 初始绘制完整图片（按显示尺寸缩放）
             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-            // 初始化裁剪值
-            document.getElementById('cropRight').value = img.width;
-            document.getElementById('cropLower').value = img.height;
+            // 更新裁剪参数的最大值为原始图片的实际像素尺寸
+            document.getElementById('cropRight').value = img.naturalWidth;
+            document.getElementById('cropLower').value = img.naturalHeight;
         };
 
-        // 更新亮度显示值
-        document.getElementById('brightness').addEventListener('input', function(e) {
-            document.getElementById('brightnessValue').textContent = e.target.value;
-            updatePreview();
-        });
-
-        // 更新对比度显示值
-        document.getElementById('contrast').addEventListener('input', function(e) {
-            document.getElementById('contrastValue').textContent = e.target.value;
-            updatePreview();
-        });
-
-        // 监听裁剪输入框的变化
-        document.getElementById('cropLeft').addEventListener('input', updatePreview);
-        document.getElementById('cropUpper').addEventListener('input', updatePreview);
-        document.getElementById('cropRight').addEventListener('input', updatePreview);
-        document.getElementById('cropLower').addEventListener('input', updatePreview);
-
-        // 监听滤镜单选框的变化
-        document.querySelectorAll('input[name="filter"]').forEach(function(input) {
-            input.addEventListener('change', updatePreview);
-        });
-
+        // 实时更新预览
         function updatePreview() {
-            // 获取裁剪值
-            const left = parseInt(document.getElementById('cropLeft').value);
-            const upper = parseInt(document.getElementById('cropUpper').value);
-            const right = parseInt(document.getElementById('cropRight').value);
-            const lower = parseInt(document.getElementById('cropLower').value);
+            // 获取裁剪参数（基于原始图片像素尺寸）
+            const left = parseInt(document.getElementById('cropLeft').value) || 0;
+            const upper = parseInt(document.getElementById('cropUpper').value) || 0;
+            const right = parseInt(document.getElementById('cropRight').value) || img.naturalWidth;
+            const lower = parseInt(document.getElementById('cropLower').value) || img.naturalHeight;
 
-            // 获取亮度和对比度值
-            const brightness = parseFloat(document.getElementById('brightness').value);
-            const contrast = parseFloat(document.getElementById('contrast').value);
+            // 确保裁剪区域有效（避免负数或反向）
+            const cropWidth = Math.max(1, right - left);
+            const cropHeight = Math.max(1, lower - upper);
 
-            // 获取滤镜类型
-            const filter = document.querySelector('input[name="filter"]:checked');
-            const filterType = filter ? filter.value : null;
+            // 获取亮度、对比度、滤镜参数
+            const brightness = parseFloat(document.getElementById('brightness').value) || 1;
+            const contrast = parseFloat(document.getElementById('contrast').value) || 1;
+            const filter = document.querySelector('input[name="filter"]:checked')?.value;
 
-            // 清空画布
+            // 清空预览画布
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // 创建一个新的 Image 对象
+            // 加载原始图片进行处理
             const tempImg = new Image();
             tempImg.src = img.src;
-
             tempImg.onload = function() {
-                // 裁剪图片
+                // 1. 裁剪处理（基于原始像素尺寸）
                 const croppedCanvas = document.createElement('canvas');
                 const croppedCtx = croppedCanvas.getContext('2d');
-                croppedCanvas.width = right - left;
-                croppedCanvas.height = lower - upper;
-                croppedCtx.drawImage(tempImg, left, upper, right - left, lower - upper, 0, 0, right - left, lower - upper);
+                croppedCanvas.width = cropWidth;
+                croppedCanvas.height = cropHeight;
+                croppedCtx.drawImage(
+                    tempImg,
+                    left, upper, cropWidth, cropHeight,  // 从原始图裁剪的区域（像素坐标）
+                    0, 0, cropWidth, cropHeight           // 绘制到裁剪画布
+                );
 
-                // 应用亮度和对比度调整
+                // 2. 亮度和对比度调整
                 const adjustedCanvas = document.createElement('canvas');
                 const adjustedCtx = adjustedCanvas.getContext('2d');
-                adjustedCanvas.width = croppedCanvas.width;
-                adjustedCanvas.height = croppedCanvas.height;
+                adjustedCanvas.width = cropWidth;
+                adjustedCanvas.height = cropHeight;
                 adjustedCtx.filter = `brightness(${brightness}) contrast(${contrast})`;
                 adjustedCtx.drawImage(croppedCanvas, 0, 0);
 
-                // 应用滤镜
-                if (filterType === 'blur') {
+                // 3. 滤镜处理
+                if (filter === 'blur') {
                     adjustedCtx.filter = 'blur(5px)';
-                } else if (filterType === 'sharpen') {
-                    adjustedCtx.filter = 'sharpen';
+                } else if (filter === 'sharpen') {
+                    adjustedCtx.filter = 'sharpen(1)';
                 }
                 adjustedCtx.drawImage(adjustedCanvas, 0, 0);
 
-                // 将最终结果绘制到预览画布上
-                ctx.drawImage(adjustedCanvas, 0, 0, canvas.width, canvas.height);
+                // 4. 关键修复：将处理后的图像缩放适配到预览画布（保持与原始图片显示尺寸一致）
+                ctx.drawImage(
+                    adjustedCanvas,
+                    0, 0,                                  // 从处理画布的起点
+                    canvas.width, canvas.height            // 缩放至预览画布的宽高（与原始图片显示规格一致）
+                );
             };
         }
+
+        // 绑定事件监听
+        document.getElementById('brightness').addEventListener('input', e => {
+            document.getElementById('brightnessValue').textContent = e.target.value;
+            updatePreview();
+        });
+        document.getElementById('contrast').addEventListener('input', e => {
+            document.getElementById('contrastValue').textContent = e.target.value;
+            updatePreview();
+        });
+        ['cropLeft', 'cropUpper', 'cropRight', 'cropLower'].forEach(id => {
+            document.getElementById(id).addEventListener('input', updatePreview);
+        });
+        document.querySelectorAll('input[name="filter"]').forEach(input => {
+            input.addEventListener('change', updatePreview);
+        });
     </script>
 </body>
 </html>
